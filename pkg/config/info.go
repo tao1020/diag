@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/pingcap/diag/pkg/utils/toml"
 )
@@ -56,10 +57,14 @@ func init() {
 
 	toml.Unmarshal(data, &Info)
 
-	infoText = "Clinic Server provides the following two regions to store your diagnostic data"
-	for k, v := range Info.ClinicServers {
+	infoText = "Clinic Server provides the following regions to store your diagnostic data"
+	for k := range Info.ClinicServers {
 		AvailableRegion = append(AvailableRegion, string(k))
-		infoText += fmt.Sprintf("\n[%s] region: %s url: %s", k, v.Info, v.Endpoint)
+	}
+	sort.Strings(AvailableRegion)
+	for _, region := range AvailableRegion {
+		server := Info.ClinicServers[Region(region)]
+		infoText += fmt.Sprintf("\n[%s] region: %s url: %s", region, server.Info, server.Endpoint)
 	}
 }
 
