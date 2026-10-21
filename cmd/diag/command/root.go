@@ -143,6 +143,7 @@ func init() {
 		newCollectCmd(),
 		newCollectDMCmd(),
 		newCollectkCmd(),
+		newRedactCmd(),
 		newPackageCmd(),
 		newRebuildCmd(),
 		newUploadCommand(),
