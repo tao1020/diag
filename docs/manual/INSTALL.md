@@ -58,7 +58,7 @@ tiup diag-redact collect tidb-test \
 ```
 
 默认启用遇错退出、自动 IP 脱敏、保留 IPv4 后两段和原地处理。
-默认同时处理 4 个文件。使用 `--redact-workers 1` 可降低并发数。
+默认同时处理 4 个文件。使用 `-w 1` 或 `--redact-workers 1` 可降低并发数。
 原地处理不保留完整原始副本。`--ip-map-output Y` 导出对照表，`N` 或省略参数则不导出。
 文件自动放在采集目录旁边，名称为 `<采集目录名>-ip-map.json`，不能上传。
 新入口的 Clinic 配置单独保存；首次打包或上传前设置区域：

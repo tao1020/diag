@@ -49,6 +49,24 @@ func TestRedactWorkersValidation(t *testing.T) {
 	require.NoError(t, cmd.PreRunE(cmd, nil))
 }
 
+func TestRedactWorkersShortFlag(t *testing.T) {
+	for _, makeCmd := range []func() *cobra.Command{newCollectCmd, newCollectkCmd, newCollectDMCmd, newRedactCmd} {
+		cmd := makeCmd()
+		require.NoError(t, cmd.ParseFlags([]string{"-w", "4"}))
+		flag := cmd.Flags().ShorthandLookup("w")
+		require.NotNil(t, flag)
+		require.Equal(t, "redact-workers", flag.Name)
+		require.Equal(t, "4", flag.Value.String())
+		require.NoError(t, cmd.PreRunE(cmd, nil))
+	}
+	cmd := newRedactCmd()
+	require.NoError(t, cmd.ParseFlags([]string{"-w", "0"}))
+	require.ErrorContains(t, cmd.PreRunE(cmd, nil), "redact-workers")
+	collect := newCollectCmd()
+	require.NoError(t, collect.ParseFlags([]string{"-w", "4", "-t", "2026-10-31T11:02:00+08:00"}))
+	require.Equal(t, "to", collect.Flags().ShorthandLookup("t").Name)
+}
+
 func TestAutomaticRedactCommand(t *testing.T) {
 	root := t.TempDir()
 	input, output := filepath.Join(root, "input"), filepath.Join(root, "output")

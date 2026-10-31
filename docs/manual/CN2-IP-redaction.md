@@ -153,7 +153,7 @@ tiup --binpath /opt/diag-cn2/diag diag collect my-cluster --redact-all-ips
 | `--redact-workers` | `4` | `4` |
 
 这些默认值用于 `collect`、`collectk`、`collectdm` 和已有目录的 `redact` 命令。
-`--redact-workers` 控制同时处理的文件数，范围为 1 到 256。例如 `--redact-workers 4` 使用 4 个并发；与 TiDB、TiKV 共用机器时可设为 1。扫描、脱敏和校验均使用该值。单个压缩包内部仍顺序处理；并发会增加临时磁盘空间和内存占用。此参数不限制整个进程的 CPU 核数。
+`--redact-workers` 控制同时处理的文件数，范围为 1 到 256。短参数为 `-w`，例如 `-w 4` 等同于 `--redact-workers 4`。与 TiDB、TiKV 共用机器时可设为 1。扫描、脱敏和校验均使用该值。单个压缩包内部仍顺序处理；并发会增加临时磁盘空间和内存占用。此参数不限制整个进程的 CPU 核数。
 包中同时提供定制 TiUP 时，可以在解压目录执行：
 
 ```bash

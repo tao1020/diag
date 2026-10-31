@@ -59,7 +59,7 @@ func (*mapExportValue) Type() string { return "Y/N" }
 
 func (o *redactOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVar(&o.addresses, "redact-ips", nil, "Comma-separated literal instance IPs to replace in a separate collected-data copy (IPv4 and IPv6)")
-	cmd.Flags().IntVar(&o.workers, "redact-workers", 4, "Maximum number of files processed concurrently during redaction (1-256)")
+	cmd.Flags().IntVarP(&o.workers, "redact-workers", "w", 4, "Maximum number of files processed concurrently during redaction (1-256)")
 	cmd.Flags().BoolVar(&o.allIPs, "redact-all-ips", false, "Automatically discover and replace all recognized literal IPv4/IPv6 addresses in supported collected data")
 	cmd.Flags().BoolVar(&o.logIPv4QuestionMark, "hide-log-ipv4", false, "Hide IPv4 in log bodies using ?; keep unique replacement IPs in paths/topology/metrics (requires --redact-all-ips)")
 	cmd.Flags().BoolVar(&o.inPlace, "redact-in-place", false, "Replace collected files in place without a full second directory; original collected content is not retained")
