@@ -13,21 +13,25 @@ if ! git -C "$tiup_root" diff --quiet HEAD --; then
   echo "TiUP tracked files differ from HEAD; commit verified source before packaging." >&2
   exit 1
 fi
-bundle="diag-redact-local-${diag_sha:0:12}-${tiup_sha:0:12}-linux-amd64"
-for item in "$bundle" "$bundle.tar.gz" "$bundle.zip"; do
-  if test -e "$artifact_root/$item"; then
-    echo "Artifact already exists: $item" >&2
-    exit 1
-  fi
+for target in linux-amd64 linux-arm64; do
+  bundle="diag-redact-local-${diag_sha:0:12}-${tiup_sha:0:12}-${target}"
+  for item in "$bundle" "$bundle.tar.gz" "$bundle.zip" "$bundle.sha256"; do
+    if test -e "$artifact_root/$item"; then
+      echo "Artifact already exists: $item" >&2
+      exit 1
+    fi
+  done
 done
 
 build_tmp="$(mktemp -d)"
 trap 'rm -rf "$build_tmp"' EXIT
 bash "$repo_root/scripts/build-cn2-redacted.sh" "$build_tmp"
-mv "$build_tmp/diag-cn2-ip-redaction-${diag_sha:0:12}-linux-amd64" "$build_tmp/$bundle"
+for target in linux-amd64 linux-arm64; do
+bundle="diag-redact-local-${diag_sha:0:12}-${tiup_sha:0:12}-${target}"
+mv "$build_tmp/diag-cn2-ip-redaction-${diag_sha:0:12}-${target}" "$build_tmp/$bundle"
 (
   cd "$tiup_root"
-  CGO_ENABLED=0 GOFLAGS='' GOOS=linux GOARCH=amd64 go build -trimpath \
+  CGO_ENABLED=0 GOFLAGS='' GOOS=linux GOARCH="${target#linux-}" go build -trimpath \
     -ldflags "-s -w -X github.com/pingcap/tiup/pkg/version.GitHash=$tiup_sha -X github.com/pingcap/tiup/pkg/version.GitRef=$tiup_branch" \
     -o "$build_tmp/$bundle/tiup" .
 )
@@ -39,7 +43,7 @@ chmod 755 "$build_tmp/$bundle/install.sh"
 {
   echo "source_commit=$tiup_sha"
   echo "source_branch=$tiup_branch"
-  echo "target=linux-amd64"
+  echo "target=$target"
   go version
 } > "$build_tmp/$bundle/TIUP-BUILD.txt"
 (
@@ -57,3 +61,4 @@ mv "$build_tmp/$bundle" "$artifact_root/$bundle"
   zip -q "$bundle.zip" "$bundle.tar.gz" "$bundle.sha256"
 )
 echo "Bundle: $artifact_root/$bundle.zip"
+done

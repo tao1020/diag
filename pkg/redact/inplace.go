@@ -80,6 +80,7 @@ func (r *Redactor) prepareRewrite(input string) ([]rewriteEntry, error) {
 		return nil, err
 	}
 	check := *r
+	check.shared = nil
 	check.report = Report{}
 	check.remaining = maxExpandedBytes
 	check.entries = 0
@@ -88,6 +89,7 @@ func (r *Redactor) prepareRewrite(input string) ([]rewriteEntry, error) {
 	check.inLogBody = false
 	var plan []rewriteEntry
 	seen := make(map[string]bool)
+	pool := check.newPool()
 	err := filepath.WalkDir(input, func(file string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -121,17 +123,20 @@ func (r *Redactor) prepareRewrite(input string) ([]rewriteEntry, error) {
 		if info.IsDir() {
 			return nil
 		}
-		in, err := os.Open(file)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		if err := check.transform(r.progressReader(in), io.Discard, rel, 0); err != nil {
-			return err
-		}
-		r.progressFileDone()
-		return nil
+		return pool.submit(func(worker *Redactor) error {
+			in, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			if err := worker.transform(worker.progressReader(in), io.Discard, rel, 0); err != nil {
+				return err
+			}
+			worker.progressFileDone()
+			return nil
+		})
 	})
+	err = errors.Join(err, pool.finish(&check))
 	if err == nil {
 		r.finishProgress()
 	}
@@ -154,18 +159,31 @@ func (r *Redactor) applyRewrite(input string, plan []rewriteEntry) error {
 	r.report = Report{IPs: len(r.mapping)}
 	r.remaining = maxExpandedBytes
 	r.entries = 0
+	r.shared = nil
+	pool := r.newPool()
+	var workErr error
 	for _, entry := range plan {
 		if err := r.entry(); err != nil {
-			return err
+			workErr = err
+			break
 		}
 		if entry.info.IsDir() {
 			continue
 		}
-		if err := r.rewriteFile(input, entry); err != nil {
-			return err
+		if err := pool.submit(func(worker *Redactor) error {
+			if err := worker.rewriteFile(input, entry); err != nil {
+				return err
+			}
+			worker.report.Files++
+			worker.progressFileDone()
+			return nil
+		}); err != nil {
+			workErr = err
+			break
 		}
-		r.report.Files++
-		r.progressFileDone()
+	}
+	if err := errors.Join(workErr, pool.finish(r)); err != nil {
+		return err
 	}
 	// Children must be renamed before their parents. Source names remain
 	// usable until their own turn, even for nested IP-bearing directories.

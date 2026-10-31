@@ -18,7 +18,7 @@ export CGO_ENABLED=0
 export GOFLAGS=
 ldflags="-s -w -X github.com/pingcap/diag/version.ReleaseVersion=$source_version -X github.com/pingcap/diag/version.GitHash=$source_sha -X github.com/pingcap/diag/version.GitBranch=$source_branch"
 
-for target in linux-amd64; do
+for target in linux-amd64 linux-arm64; do
   export GOOS="${target%-*}"
   export GOARCH="${target#*-}"
   bundle="diag-${source_version}-${target}"
@@ -45,6 +45,6 @@ for target in linux-amd64; do
 done
 (
   cd "$artifact_root"
-  shasum -a 256 "diag-${source_version}-linux-amd64.tar.gz" > SHA256SUMS
+  shasum -a 256 "diag-${source_version}-linux-amd64.tar.gz" "diag-${source_version}-linux-arm64.tar.gz" > SHA256SUMS
 )
 echo "Artifacts: $artifact_root"
