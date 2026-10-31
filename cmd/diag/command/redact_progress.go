@@ -85,12 +85,10 @@ func (p *redactionProgress) close(err error) {
 
 func redactionProgressDetail(state redact.Progress, elapsed time.Duration) string {
 	percent := 0
-	if state.TotalBytes > 0 {
-		percent = int(100 * float64(state.Bytes) / float64(state.TotalBytes))
-	} else if state.TotalFiles > 0 {
+	if state.TotalFiles > 0 {
 		percent = int(100 * float64(state.Files) / float64(state.TotalFiles))
 	}
-	// Reading the last byte does not mean compression/checking has finished.
+	// Finishing the last file does not mean the whole phase has completed.
 	if percent > 99 {
 		percent = 99
 	}
@@ -98,8 +96,7 @@ func redactionProgressDetail(state redact.Progress, elapsed time.Duration) strin
 		percent = 100
 	}
 	filled := percent / 10
-	return fmt.Sprintf("[%s%s] %3d%% | %d/%d files | %.1f/%.1f MiB | %s",
+	return fmt.Sprintf("[%s%s] %3d%% | %d/%d files | %s",
 		strings.Repeat("=", filled), strings.Repeat(" ", 10-filled), percent,
-		state.Files, state.TotalFiles, float64(state.Bytes)/(1<<20), float64(state.TotalBytes)/(1<<20),
-		elapsed.Round(time.Second))
+		state.Files, state.TotalFiles, elapsed.Round(time.Second))
 }
