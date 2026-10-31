@@ -1,6 +1,7 @@
 # 安装本地 TiUP 和 Diag Redact
 
-这个安装包用于 Linux x86_64。它包含定制 TiUP、独立的 `diag-redact` 和配套资源。
+安装包提供 Linux x86_64 和 ARM64 版本。请根据 `uname -m` 选择对应版本。
+安装包包含定制 TiUP、独立的 `diag-redact` 和配套资源。
 安装脚本不会修改 TiUP 镜像、已有 Diag 组件、Clinic 配置、采集目录或 IP 对照表。
 
 ## 1. 解压并安装
@@ -57,6 +58,7 @@ tiup diag-redact collect tidb-test \
 ```
 
 默认启用遇错退出、自动 IP 脱敏、保留 IPv4 后两段和原地处理。
+默认同时处理 4 个文件。使用 `--redact-workers 1` 可降低并发数。
 原地处理不保留完整原始副本。`--ip-map-output Y` 导出对照表，`N` 或省略参数则不导出。
 文件自动放在采集目录旁边，名称为 `<采集目录名>-ip-map.json`，不能上传。
 新入口的 Clinic 配置单独保存；首次打包或上传前设置区域：

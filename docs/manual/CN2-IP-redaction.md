@@ -48,9 +48,8 @@ CN2 负责选择 Clinic 地址和加密证书。
 | --- | --- | --- |
 | Linux x86_64 运维服务器 | `linux-amd64.tar.gz` | `Linux` / `x86_64` |
 | Linux ARM64 运维服务器 | `linux-arm64.tar.gz` | `Linux` / `aarch64` |
-| Apple 芯片 Mac | `darwin-arm64.tar.gz` | `Darwin` / `arm64` |
 
-本次带进度条的测试包只提供 Linux amd64，其他平台后续按测试结果构建。
+本次测试包提供 Linux AMD64 和 ARM64 两种版本。
 
 可以先查看本机类型：
 
@@ -69,16 +68,8 @@ cd diag-cn2-ip-redaction-d59432377a1f-linux-amd64
 ./diag --version
 ```
 
-Mac 示例：
-
-```bash
-tar -xzf diag-cn2-ip-redaction-d59432377a1f-darwin-arm64.tar.gz
-cd diag-cn2-ip-redaction-d59432377a1f-darwin-arm64
-./diag --version
-```
-
-首次交付版本的输出应包含 `cn2-ip-redaction-d59432377a1f`。
-后续构建的版本以 `--version` 和 `BUILD.txt` 为准。
+ARM64 机器请选择文件名中含 `linux-arm64` 的压缩包。
+构建版本以 `--version` 和 `BUILD.txt` 为准。
 后续命令均在解压后的程序目录中执行。
 
 如果拿到了配套的 `SHA256SUMS`，可以在解压前核对压缩包：
@@ -87,7 +78,7 @@ cd diag-cn2-ip-redaction-d59432377a1f-darwin-arm64
 shasum -a 256 -c SHA256SUMS
 ```
 
-清单中的每个压缩包应各显示一行 `OK`。本次测试清单只包含 Linux amd64。
+清单中的每个压缩包应各显示一行 `OK`。
 旧清单可能包含多个平台；缺少的文件会提示缺失，需要核对已下载文件对应的一行。
 Linux 上如果没有 `shasum`，可以使用 `sha256sum -c SHA256SUMS`。
 
@@ -159,8 +150,10 @@ tiup --binpath /opt/diag-cn2/diag diag collect my-cluster --redact-all-ips
 | `--keep-ipv4-octets` | `0`，完整替代 | `2`，保留后两段 |
 | `--redact-in-place` | `false` | `true` |
 | `--ip-map-output` | `N`，不导出 | `N`，不导出；使用 `Y` 才导出 |
+| `--redact-workers` | `4` | `4` |
 
 这些默认值用于 `collect`、`collectk`、`collectdm` 和已有目录的 `redact` 命令。
+`--redact-workers` 控制同时处理的文件数，范围为 1 到 256。例如 `--redact-workers 4` 使用 4 个并发；与 TiDB、TiKV 共用机器时可设为 1。扫描、脱敏和校验均使用该值。单个压缩包内部仍顺序处理；并发会增加临时磁盘空间和内存占用。此参数不限制整个进程的 CPU 核数。
 包中同时提供定制 TiUP 时，可以在解压目录执行：
 
 ```bash
@@ -914,7 +907,7 @@ bash scripts/build-cn2-redacted.sh
 
 构建前应提交并验证代码。脚本会拒绝打包与当前提交不一致的已跟踪文件。
 输出目录为 `package/cn2-ip-redaction`。
-当前脚本只生成 Linux amd64 测试压缩包，以及 `SHA256SUMS`。
+当前脚本生成 Linux AMD64、ARM64 测试压缩包，以及 `SHA256SUMS`。
 
 将带本地入口的定制 TiUP 源码准备好并提交后，可以生成包含两个项目的测试包：
 

@@ -25,7 +25,7 @@ jobs:
           test -z "$(gofmt -l pkg/redact cmd/diag/command/redact*.go pkg/packager/redact_test.go)"
           go vet ./...
           go test ./...
-      - name: Build Linux amd64 test bundle
+      - name: Build Linux amd64 and arm64 test bundles
         run: bash scripts/build-cn2-redacted.sh
       - name: Test local installer with disposable prefixes
         run: sh scripts/test-install-local-tiup.sh

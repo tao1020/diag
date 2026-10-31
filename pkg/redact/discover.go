@@ -31,6 +31,11 @@ func Discover(input string) (*Redactor, error) {
 
 // DiscoverWithProgress reports the discovery pass without exposing file names.
 func DiscoverWithProgress(input string, callback func(Progress)) (*Redactor, error) {
+	return DiscoverWithWorkers(input, callback, 1)
+}
+
+// DiscoverWithWorkers limits concurrent file scans to workers.
+func DiscoverWithWorkers(input string, callback func(Progress), workers int) (*Redactor, error) {
 	input, err := filepath.Abs(input)
 	if err != nil {
 		return nil, err
@@ -46,6 +51,9 @@ func DiscoverWithProgress(input string, callback func(Progress)) (*Redactor, err
 		return nil, err
 	}
 	scan := &Redactor{discovered: make(map[netip.Addr]bool), scanOnly: true, remaining: maxExpandedBytes}
+	if err := scan.SetWorkers(workers); err != nil {
+		return nil, err
+	}
 	scan.SetProgress(callback)
 	if err := scan.startProgress(input, "Scanning IPs"); err != nil {
 		return nil, err
@@ -54,6 +62,7 @@ func DiscoverWithProgress(input string, callback func(Progress)) (*Redactor, err
 	if err != nil {
 		return nil, err
 	}
+	pool := scan.newPool()
 	err = filepath.WalkDir(input, func(file string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -78,17 +87,20 @@ func DiscoverWithProgress(input string, callback func(Progress)) (*Redactor, err
 		if !info.Mode().IsRegular() {
 			return errors.New("symlinks and special files cannot be safely inspected")
 		}
-		in, err := os.Open(file)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		if err := scan.transform(scan.progressReader(in), io.Discard, rel, 0); err != nil {
-			return err
-		}
-		scan.progressFileDone()
-		return nil
+		return pool.submit(func(worker *Redactor) error {
+			in, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			if err := worker.transform(worker.progressReader(in), io.Discard, rel, 0); err != nil {
+				return err
+			}
+			worker.progressFileDone()
+			return nil
+		})
 	})
+	err = errors.Join(err, pool.finish(scan))
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +118,7 @@ func DiscoverWithProgress(input string, callback func(Progress)) (*Redactor, err
 		}
 	}
 	redactor.automatic = true
+	redactor.workers = workers
 	scan.finishProgress()
 	redactor.SetProgress(callback)
 	return redactor, nil

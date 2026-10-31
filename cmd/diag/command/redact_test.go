@@ -27,6 +27,7 @@ import (
 func TestRedactionFlagsAndInvalidSelection(t *testing.T) {
 	for _, makeCmd := range []func() *cobra.Command{newCollectCmd, newCollectkCmd, newCollectDMCmd, newRedactCmd} {
 		cmd := makeCmd()
+		require.NotNil(t, cmd.Flags().Lookup("redact-workers"))
 		require.NotNil(t, cmd.Flags().Lookup("redact-ips"))
 		require.NotNil(t, cmd.Flags().Lookup("redact-all-ips"))
 		require.NotNil(t, cmd.Flags().Lookup("redact-output"))
@@ -35,6 +36,17 @@ func TestRedactionFlagsAndInvalidSelection(t *testing.T) {
 		require.NoError(t, cmd.Flags().Set("redact-ips", "host.example"))
 		require.Error(t, cmd.PreRunE(cmd, nil))
 	}
+}
+
+func TestRedactWorkersValidation(t *testing.T) {
+	for _, value := range []string{"0", "-1", "257"} {
+		cmd := newRedactCmd()
+		require.NoError(t, cmd.Flags().Set("redact-workers", value))
+		require.ErrorContains(t, cmd.PreRunE(cmd, nil), "redact-workers")
+	}
+	cmd := newRedactCmd()
+	require.NoError(t, cmd.Flags().Set("redact-workers", "4"))
+	require.NoError(t, cmd.PreRunE(cmd, nil))
 }
 
 func TestAutomaticRedactCommand(t *testing.T) {

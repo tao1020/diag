@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -35,6 +36,7 @@ type Progress struct {
 }
 
 type progressTracker struct {
+	mu sync.Mutex
 	Progress
 	callback func(Progress)
 	last     time.Time
@@ -103,6 +105,8 @@ type progressReader struct {
 
 func (r *progressReader) Read(buf []byte) (int, error) {
 	n, err := r.Reader.Read(buf)
+	r.tracker.mu.Lock()
+	defer r.tracker.mu.Unlock()
 	r.tracker.Bytes += int64(n)
 	r.tracker.emit(false)
 	return n, err
@@ -110,6 +114,8 @@ func (r *progressReader) Read(buf []byte) (int, error) {
 
 func (r *Redactor) progressFileDone() {
 	if r.progress != nil {
+		r.progress.mu.Lock()
+		defer r.progress.mu.Unlock()
 		r.progress.Files++
 		r.progress.emit(false)
 	}

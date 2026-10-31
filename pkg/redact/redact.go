@@ -56,6 +56,8 @@ type Report struct {
 
 // Redactor holds a mapping shared by every file and archive entry in one run.
 type Redactor struct {
+	workers             int
+	shared              *sharedState
 	progress            *progressTracker
 	mapping             map[netip.Addr]netip.Addr
 	destinations        map[netip.Addr]bool
@@ -136,6 +138,10 @@ func (r *Redactor) text(data []byte) ([]byte, error) {
 		}
 		key := addr.WithZone("").Unmap()
 		if r.discovered != nil {
+			if r.shared != nil {
+				r.shared.mu.Lock()
+				defer r.shared.mu.Unlock()
+			}
 			r.discovered[key] = true
 			return match
 		}
@@ -165,7 +171,7 @@ func (r *Redactor) text(data []byte) ([]byte, error) {
 	if logIPv4Remaining {
 		return nil, errors.New("an IPv4 literal remains in a question-mark log body")
 	}
-	if len(r.discovered) > maxAddresses {
+	if r.discoveryCount() > maxAddresses {
 		return nil, errors.New("redaction distinct IP limit exceeded")
 	}
 	if unexpected {
@@ -236,6 +242,7 @@ func (r *Redactor) name(name string) (string, error) {
 // Copy transforms input into a new sibling directory. Failed work is removed;
 // the original input is never edited. Symlinks and special files are rejected.
 func (r *Redactor) Copy(input, output string) (string, Report, error) {
+	r.shared = nil
 	r.report = Report{IPs: len(r.mapping)}
 	r.remaining = maxExpandedBytes
 	r.entries = 0
@@ -290,6 +297,7 @@ func (r *Redactor) Copy(input, output string) (string, Report, error) {
 		return "", r.report, err
 	}
 	seen := make(map[string]bool)
+	pool := r.newPool()
 	err = filepath.WalkDir(input, func(source string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -323,24 +331,27 @@ func (r *Redactor) Copy(input, output string) (string, Report, error) {
 		if !info.Mode().IsRegular() {
 			return errors.New("symlinks and special files cannot be safely redacted")
 		}
-		in, err := os.Open(source)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return err
-		}
-		transformErr := r.transform(r.progressReader(in), out, relative, 0)
-		closeErr := out.Close()
-		if err := errors.Join(transformErr, closeErr); err != nil {
-			return fmt.Errorf("cannot safely redact file %q: %w", name, err)
-		}
-		r.report.Files++
-		r.progressFileDone()
-		return nil
+		return pool.submit(func(worker *Redactor) error {
+			in, err := os.Open(source)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			transformErr := worker.transform(worker.progressReader(in), out, relative, 0)
+			closeErr := out.Close()
+			if err := errors.Join(transformErr, closeErr); err != nil {
+				return fmt.Errorf("cannot safely redact file %q: %w", name, err)
+			}
+			worker.report.Files++
+			worker.progressFileDone()
+			return nil
+		})
 	})
+	err = errors.Join(err, pool.finish(r))
 	if err != nil {
 		return "", r.report, err
 	}
@@ -360,7 +371,8 @@ func (r *Redactor) verify(dir string) error {
 	if err := r.startProgress(dir, "Verifying"); err != nil {
 		return err
 	}
-	check := &Redactor{mapping: r.mapping, destinations: r.destinations, aliases: r.aliases, remaining: maxExpandedBytes, automatic: r.automatic, scanOnly: true, verifying: true, logIPv4QuestionMark: r.logIPv4QuestionMark}
+	check := &Redactor{mapping: r.mapping, destinations: r.destinations, aliases: r.aliases, remaining: maxExpandedBytes, automatic: r.automatic, scanOnly: true, verifying: true, logIPv4QuestionMark: r.logIPv4QuestionMark, workers: r.workers, progress: r.progress}
+	pool := check.newPool()
 	err := filepath.WalkDir(dir, func(file string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -375,17 +387,20 @@ func (r *Redactor) verify(dir string) error {
 		if entry.IsDir() {
 			return nil
 		}
-		in, err := os.Open(file)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		if err := check.transform(r.progressReader(in), io.Discard, relative, 0); err != nil {
-			return err
-		}
-		r.progressFileDone()
-		return nil
+		return pool.submit(func(worker *Redactor) error {
+			in, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			if err := worker.transform(worker.progressReader(in), io.Discard, relative, 0); err != nil {
+				return err
+			}
+			worker.progressFileDone()
+			return nil
+		})
 	})
+	err = errors.Join(err, pool.finish(check))
 	if err != nil {
 		return fmt.Errorf("redaction verification failed: %w", err)
 	}
@@ -397,6 +412,15 @@ func (r *Redactor) verify(dir string) error {
 }
 
 func (r *Redactor) entry() error {
+	if r.shared != nil {
+		r.shared.mu.Lock()
+		defer r.shared.mu.Unlock()
+		r.shared.entries++
+		if r.shared.entries > maxEntries {
+			return errors.New("redaction file count limit exceeded")
+		}
+		return nil
+	}
 	r.entries++
 	if r.entries > maxEntries {
 		return errors.New("redaction file count limit exceeded")
@@ -482,8 +506,7 @@ func (r *Redactor) plain(in io.Reader, out io.Writer) error {
 	})
 	for scanner.Scan() {
 		data := scanner.Bytes()
-		r.remaining -= int64(len(data))
-		if r.remaining < 0 {
+		if !r.consume(int64(len(data))) {
 			return errors.New("redaction expanded data limit exceeded")
 		}
 		if !utf8.Valid(data) {

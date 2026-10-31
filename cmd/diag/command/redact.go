@@ -31,6 +31,7 @@ type redactOptions struct {
 	inPlace             bool
 	mapOutput           bool
 	keepIPv4Octets      int
+	workers             int
 }
 
 type mapExportValue bool
@@ -58,6 +59,7 @@ func (*mapExportValue) Type() string { return "Y/N" }
 
 func (o *redactOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVar(&o.addresses, "redact-ips", nil, "Comma-separated literal instance IPs to replace in a separate collected-data copy (IPv4 and IPv6)")
+	cmd.Flags().IntVar(&o.workers, "redact-workers", 4, "Maximum number of files processed concurrently during redaction (1-256)")
 	cmd.Flags().BoolVar(&o.allIPs, "redact-all-ips", false, "Automatically discover and replace all recognized literal IPv4/IPv6 addresses in supported collected data")
 	cmd.Flags().BoolVar(&o.logIPv4QuestionMark, "hide-log-ipv4", false, "Hide IPv4 in log bodies using ?; keep unique replacement IPs in paths/topology/metrics (requires --redact-all-ips)")
 	cmd.Flags().BoolVar(&o.inPlace, "redact-in-place", false, "Replace collected files in place without a full second directory; original collected content is not retained")
@@ -65,6 +67,9 @@ func (o *redactOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&o.keepIPv4Octets, "keep-ipv4-octets", 0, "Keep the last IPv4 octet with prefix 10.0.0 (1), or the last two with prefix 198.18 (2); matching suffixes share replacement IPs")
 	cmd.Flags().StringVar(&o.output, "redact-output", "", "New redacted directory outside the input; default: <collected-directory>-redacted")
 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		if cmd.Flags().Changed("redact-workers") && o.workers == 0 {
+			return fmt.Errorf("redact-workers must be between 1 and 256")
+		}
 		if cmd.Flags().Changed("redact-ips") && len(o.addresses) == 0 {
 			return fmt.Errorf("redact-ips cannot be empty")
 		}
@@ -76,6 +81,9 @@ func (o *redactOptions) flags(cmd *cobra.Command) {
 }
 
 func (o *redactOptions) validate() error {
+	if o.workers < 0 || o.workers > 256 {
+		return fmt.Errorf("redact-workers must be between 1 and 256")
+	}
 	if o.keepIPv4Octets != 0 {
 		if o.keepIPv4Octets != 1 && o.keepIPv4Octets != 2 {
 			return fmt.Errorf("keep-ipv4-octets must be 1 or 2")
@@ -133,12 +141,19 @@ func (o *redactOptions) run(input string) (runErr error) {
 	defer func() { progress.close(runErr) }()
 	var r *redact.Redactor
 	var err error
+	workers := o.workers
+	if workers == 0 {
+		workers = 1
+	}
 	if o.allIPs {
-		r, err = redact.DiscoverWithProgress(input, progress.update)
+		r, err = redact.DiscoverWithWorkers(input, progress.update, workers)
 	} else {
 		r, err = redact.New(o.addresses)
 	}
 	if err != nil {
+		return err
+	}
+	if err := r.SetWorkers(workers); err != nil {
 		return err
 	}
 	r.SetProgress(progress.update)
