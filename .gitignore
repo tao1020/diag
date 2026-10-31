@@ -26,6 +26,8 @@ bin/
 /.idea/
 /.vscode/
 /package/
+/diag
+/.githooks/
 /logs
 docker/secret/
 *__failpoint_binding__.go
