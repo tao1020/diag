@@ -27,7 +27,10 @@ import (
 func TestRedactionProgressDetail(t *testing.T) {
 	state := redact.Progress{Bytes: 50, TotalBytes: 100, Files: 1, TotalFiles: 2}
 	require.Contains(t, redactionProgressDetail(state, 2*time.Second), "[=====     ]  50% | 1/2 files")
+	require.NotContains(t, redactionProgressDetail(state, 2*time.Second), "MiB")
 	state.Bytes = 100
+	require.Contains(t, redactionProgressDetail(state, 0), "50%")
+	state.Files = 2
 	require.Contains(t, redactionProgressDetail(state, 0), "99%")
 	state.Done = true
 	require.Contains(t, redactionProgressDetail(state, 0), "[==========] 100%")
